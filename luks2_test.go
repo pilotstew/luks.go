@@ -11,15 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func prepareLuks2Disk(password string, cryptsetupArgs ...string) (*os.File, error) {
+func prepareLuks2Disk(t *testing.T, password string, cryptsetupArgs ...string) *os.File {
+	t.Helper()
 	disk, err := os.CreateTemp("", "luksv2.go.disk")
-	if err != nil {
-		return nil, err
-	}
-
-	if err := disk.Truncate(24 * 1024 * 1024); err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
+	require.NoError(t, disk.Truncate(24*1024*1024))
 
 	args := []string{"luksFormat", "--type", "luks2", "--iter-time", "5", "-q", disk.Name()}
 	args = append(args, cryptsetupArgs...)
@@ -29,19 +25,15 @@ func prepareLuks2Disk(password string, cryptsetupArgs ...string) (*os.File, erro
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 	}
-	if err := cmd.Run(); err != nil {
-		return nil, err
-	}
-
-	return disk, nil
+	require.NoError(t, cmd.Run())
+	return disk
 }
 
 func runLuks2Test(t *testing.T, keySlot int, cryptsetupArgs ...string) {
 	t.Parallel()
 
 	password := "foobar"
-	disk, err := prepareLuks2Disk(password, cryptsetupArgs...)
-	require.NoError(t, err)
+	disk := prepareLuks2Disk(t, password, cryptsetupArgs...)
 	defer disk.Close()
 	defer os.Remove(disk.Name())
 
@@ -98,6 +90,8 @@ func TestLuks2TwofishBlockCipher(t *testing.T) {
 }
 
 func TestLuks2WithIntegrity(t *testing.T) {
+	t.Parallel()
+
 	// dm-integrity requires 'root'
 	curr, err := user.Current()
 	require.NoError(t, err)
@@ -145,8 +139,7 @@ func TestLuks2UnlockMultipleKeySlots(t *testing.T) {
 	t.Parallel()
 
 	password := "barfoo"
-	disk, err := prepareLuks2Disk(password)
-	require.NoError(t, err)
+	disk := prepareLuks2Disk(t, password)
 	defer disk.Close()
 	defer os.Remove(disk.Name())
 
@@ -174,8 +167,7 @@ func TestLuks2UnlockWithToken(t *testing.T) {
 	t.Parallel()
 
 	password := "foobar"
-	disk, err := prepareLuks2Disk(password)
-	require.NoError(t, err)
+	disk := prepareLuks2Disk(t, password)
 	defer disk.Close()
 	defer os.Remove(disk.Name())
 
@@ -219,8 +211,7 @@ func TestLuks2PreferedPriority(t *testing.T) {
 	t.Parallel()
 
 	password := "foobar"
-	disk, err := prepareLuks2Disk(password)
-	require.NoError(t, err)
+	disk := prepareLuks2Disk(t, password)
 	defer disk.Close()
 	defer os.Remove(disk.Name())
 
