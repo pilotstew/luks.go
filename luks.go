@@ -2,6 +2,7 @@ package luks
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,7 +11,7 @@ import (
 )
 
 // ErrPassphraseDoesNotMatch is an error that indicates provided passphrase does not match
-var ErrPassphraseDoesNotMatch = fmt.Errorf("Passphrase does not match")
+var ErrPassphraseDoesNotMatch = errors.New("passphrase does not match")
 
 // Device represents LUKS partition data
 type Device interface {
