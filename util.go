@@ -127,7 +127,7 @@ func getCipher(name string) (func(key []byte) (cipher.Block, error), error) {
 		}
 		return f, nil
 	default:
-		return nil, fmt.Errorf("Unknown cipher: %v", name)
+		return nil, fmt.Errorf("unknown cipher: %v", name)
 	}
 }
 

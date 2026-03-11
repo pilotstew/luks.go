@@ -86,7 +86,7 @@ func openFromFiles(devicePath string, hdrF, dataF *os.File) (Device, error) {
 	case 2:
 		return initV2Device(devicePath, hdrF, dataF)
 	default:
-		return nil, fmt.Errorf("invalid LUKS version %v", version)
+		return nil, fmt.Errorf("invalid LUKS version %d", version)
 	}
 }
 

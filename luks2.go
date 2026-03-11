@@ -59,7 +59,7 @@ func initV2Device(path string, hdrF, dataF *os.File) (*deviceV2, error) {
 
 	hdrSize := hdr.HeaderSize // size of header + JSON metadata
 	if !isPowerOfTwo(uint(hdrSize)) || hdrSize < 16384 || hdrSize > 4194304 {
-		return nil, fmt.Errorf("Invalid size of LUKS header: %v", hdrSize)
+		return nil, fmt.Errorf("invalid size of LUKS header: %v", hdrSize)
 	}
 
 	// read the whole header
@@ -80,7 +80,7 @@ func initV2Device(path string, hdrF, dataF *os.File) (*deviceV2, error) {
 	case "sha256":
 		h = sha256.New()
 	default:
-		return nil, fmt.Errorf("Unknown header checksum algorithm: %v", algo)
+		return nil, fmt.Errorf("unknown header checksum algorithm: %v", algo)
 	}
 
 	h.Write(data)
@@ -88,7 +88,7 @@ func initV2Device(path string, hdrF, dataF *os.File) (*deviceV2, error) {
 	checksum := h.Sum(make([]byte, 0))
 	expectedChecksum := hdr.Checksum[:h.Size()]
 	if !bytes.Equal(checksum, expectedChecksum) {
-		return nil, fmt.Errorf("Invalid header checksum")
+		return nil, fmt.Errorf("invalid header checksum")
 	}
 
 	var meta metadata
@@ -222,7 +222,7 @@ func (d *deviceV2) UnsealVolume(keyslotIdx int, passphrase []byte) (*Volume, err
 
 	keyslot, ok := keyslots[keyslotIdx]
 	if !ok {
-		return nil, fmt.Errorf("Unable to get a keyslot with id: %d", keyslotIdx)
+		return nil, fmt.Errorf("unable to get a keyslot with id: %d", keyslotIdx)
 	}
 
 	afKey, err := deriveLuks2AfKey(keyslot.Kdf, keyslotIdx, passphrase, keyslot.Area.KeySize)
@@ -239,7 +239,7 @@ func (d *deviceV2) UnsealVolume(keyslotIdx int, passphrase []byte) (*Volume, err
 	// verify with digest
 	digest := d.findDigestForKeyslot(keyslotIdx)
 	if digest == nil {
-		return nil, fmt.Errorf("No digest is found for keyslot %v", keyslotIdx)
+		return nil, fmt.Errorf("no digest is found for keyslot %v", keyslotIdx)
 	}
 
 	generatedDigest, err := computeDigestForKey(digest, keyslotIdx, finalKey)
@@ -324,11 +324,11 @@ func computeDigestForKey(dig *digest, keyslotIdx int, finalKey []byte) ([]byte, 
 	case "pbkdf2":
 		h, size := getHashAlgo(dig.Hash)
 		if h == nil {
-			return nil, fmt.Errorf("Unknown digest hash algorithm: %v", dig.Hash)
+			return nil, fmt.Errorf("unknown digest hash algorithm: %v", dig.Hash)
 		}
 		return pbkdf2.Key(finalKey, digSalt, int(dig.Iterations), size, h), nil
 	default:
-		return nil, fmt.Errorf("Unknown digest kdf type: %v", dig.Type)
+		return nil, fmt.Errorf("unknown digest kdf type: %v", dig.Type)
 	}
 }
 
@@ -378,11 +378,11 @@ func (d *deviceV2) decryptLuks2VolumeKey(keyslotIdx int, keyslot keyslot, afKey 
 	// anti-forensic merge
 	af := keyslot.Af
 	if af.Stripes != stripesNum {
-		return nil, fmt.Errorf("LUKS currently supports only af with 4000 stripes")
+		return nil, fmt.Errorf("LUKS currently supports only AF with 4000 stripes")
 	}
 	h, _ := getHashAlgo(af.Hash)
 	if h == nil {
-		return nil, fmt.Errorf("Unknown af hash algorithm: %v", af.Hash)
+		return nil, fmt.Errorf("unknown AF hash algorithm: %v", af.Hash)
 	}
 
 	return afMerge(keyData, int(keyslot.KeySize), int(af.Stripes), h())
@@ -393,7 +393,7 @@ func buildLuks2AfCipher(encryption string, afKey []byte) (*xts.Cipher, error) {
 	// example of `encryption` value is 'aes-xts-plain64'
 	encParts := strings.Split(encryption, "-")
 	if len(encParts) != 3 {
-		return nil, fmt.Errorf("Unexpected encryption format: %v", encryption)
+		return nil, fmt.Errorf("unexpected encryption format: %v", encryption)
 	}
 	cipherName := encParts[0]
 	cipherMode := encParts[1]
@@ -408,7 +408,7 @@ func buildLuks2AfCipher(encryption string, afKey []byte) (*xts.Cipher, error) {
 	case "xts":
 		return xts.NewCipher(cipherFunc, afKey)
 	default:
-		return nil, fmt.Errorf("Unknown encryption mode: %v", cipherMode)
+		return nil, fmt.Errorf("unknown encryption mode: %v", cipherMode)
 	}
 }
 
@@ -427,7 +427,7 @@ func deriveLuks2AfKey(kdf kdf, keyslotIdx int, passphrase []byte, keyLength uint
 		case "sha512":
 			h = sha512.New
 		default:
-			return nil, fmt.Errorf("Unknown keyslotIdx[%v].kdf.hash algorithm: %v", keyslotIdx, kdf.Hash)
+			return nil, fmt.Errorf("unknown keyslotIdx[%v].kdf.hash algorithm: %v", keyslotIdx, kdf.Hash)
 		}
 		return pbkdf2.Key(passphrase, salt, int(kdf.Iterations), int(keyLength), h), nil
 	case "argon2i":
@@ -435,7 +435,7 @@ func deriveLuks2AfKey(kdf kdf, keyslotIdx int, passphrase []byte, keyLength uint
 	case "argon2id":
 		return argon2.IDKey(passphrase, salt, uint32(kdf.Time), uint32(kdf.Memory), uint8(kdf.Cpus), uint32(keyLength)), nil
 	default:
-		return nil, fmt.Errorf("Unknown kdf type: %v", kdf.Type)
+		return nil, fmt.Errorf("unknown kdf type: %v", kdf.Type)
 	}
 }
 

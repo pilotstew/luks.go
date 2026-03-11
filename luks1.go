@@ -150,7 +150,7 @@ func (d *deviceV1) UnsealVolume(keyslotIdx int, passphrase []byte) (*Volume, err
 	algo := fixedArrayToString(d.hdr.HashSpec[:])
 	h, _ := getHashAlgo(algo)
 	if h == nil {
-		return nil, fmt.Errorf("Unknown hash spec algorithm: %v", algo)
+		return nil, fmt.Errorf("unknown hash spec algorithm: %v", algo)
 	}
 
 	afKey := deriveLuks1AfKey(passphrase, slot, int(d.hdr.KeyBytes), h)
@@ -222,7 +222,7 @@ func (d *deviceV1) decryptLuks1VolumeKey(keyslotIdx int, slot keySlot, afKey []b
 
 	// anti-forensic merge
 	if slot.Stripes != stripesNum {
-		return nil, fmt.Errorf("LUKS currently supports only af with 4000 stripes")
+		return nil, fmt.Errorf("LUKS currently supports only AF with 4000 stripes")
 	}
 	return afMerge(keyData, int(d.hdr.KeyBytes), int(slot.Stripes), h())
 }
@@ -241,7 +241,7 @@ func (d *deviceV1) buildLuks1AfCipher(afKey []byte) (*xts.Cipher, error) {
 	case "xts-plain64":
 		return xts.NewCipher(cipherFunc, afKey)
 	default:
-		return nil, fmt.Errorf("Unknown encryption mode: %v", cipherMode)
+		return nil, fmt.Errorf("unknown encryption mode: %v", cipherMode)
 	}
 }
 
@@ -300,7 +300,7 @@ func (d *deviceV1) Tokens() ([]Token, error) {
 		return nil, err
 	}
 	if hdrChecksum.Sum32() != hdr.Crc32 {
-		return nil, fmt.Errorf("Luks Meta header CRC error")
+		return nil, fmt.Errorf("LUKS meta header CRC error")
 	}
 
 	for i, s := range hdr.Slots {
@@ -314,7 +314,7 @@ func (d *deviceV1) Tokens() ([]Token, error) {
 				return nil, err
 			}
 			if tokenChecksum.Sum32() != s.Crc32 {
-				return nil, fmt.Errorf("Luks Meta token #%d CRC error", i)
+				return nil, fmt.Errorf("LUKS meta token #%d CRC error", i)
 			}
 
 			t := Token{

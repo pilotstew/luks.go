@@ -55,7 +55,7 @@ func afSplit(src []byte, blockNum int, h hash.Hash) ([]byte, error) {
 		return nil, err
 	}
 	if n != randomDataSize {
-		return nil, fmt.Errorf("Expected to generate %v bytes of random data, got %v", randomDataSize, n)
+		return nil, fmt.Errorf("expected to generate %v bytes of random data, got %v", randomDataSize, n)
 	}
 
 	for i := 0; i < blockNum-1; i++ {
