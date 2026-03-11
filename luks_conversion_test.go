@@ -9,7 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func prepareLuksDisk(t *testing.T, password string, typ string, extraArgs ...string) (*os.File, error) {
+func prepareLuksDisk(t *testing.T, password string, typ string, extraArgs ...string) *os.File {
+	t.Helper()
 	disk, err := os.CreateTemp("", typ+".go.disk")
 	require.NoError(t, err)
 	require.NoError(t, disk.Truncate(2*1024*1024))
@@ -17,14 +18,13 @@ func prepareLuksDisk(t *testing.T, password string, typ string, extraArgs ...str
 	args := []string{"luksFormat", "--type", typ, "-q", disk.Name()}
 	args = append(args, extraArgs...)
 	cmd := exec.Command("cryptsetup", args...)
-
 	cmd.Stdin = strings.NewReader(password)
 	if testing.Verbose() {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 	}
 	require.NoError(t, cmd.Run())
-	return disk, err
+	return disk
 }
 
 func TestConvertV1toV2(t *testing.T) {
@@ -32,8 +32,7 @@ func TestConvertV1toV2(t *testing.T) {
 
 	password := "test1"
 
-	disk, err := prepareLuksDisk(t, password, "luks1")
-	require.NoError(t, err)
+	disk := prepareLuksDisk(t, password, "luks1")
 	defer disk.Close()
 	defer os.Remove(disk.Name())
 
@@ -75,8 +74,7 @@ func TestConvertV2toV1(t *testing.T) {
 
 	password := "test2"
 
-	disk, err := prepareLuksDisk(t, password, "luks2", "--sector-size", "512", "--pbkdf", "pbkdf2")
-	require.NoError(t, err)
+	disk := prepareLuksDisk(t, password, "luks2", "--sector-size", "512", "--pbkdf", "pbkdf2")
 	defer disk.Close()
 	defer os.Remove(disk.Name())
 

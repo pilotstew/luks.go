@@ -9,7 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func prepareLuks1Disk(t *testing.T, password string, cryptsetupArgs ...string) (*os.File, error) {
+func prepareLuks1Disk(t *testing.T, password string, cryptsetupArgs ...string) *os.File {
+	t.Helper()
 	disk, err := os.CreateTemp("", "luksv1.go.disk")
 	require.NoError(t, err)
 	require.NoError(t, disk.Truncate(2*1024*1024))
@@ -17,22 +18,20 @@ func prepareLuks1Disk(t *testing.T, password string, cryptsetupArgs ...string) (
 	args := []string{"luksFormat", "--type", "luks1", "--iter-time", "5", "-q", disk.Name()}
 	args = append(args, cryptsetupArgs...)
 	cmd := exec.Command("cryptsetup", args...)
-
 	cmd.Stdin = strings.NewReader(password)
 	if testing.Verbose() {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 	}
 	require.NoError(t, cmd.Run())
-	return disk, err
+	return disk
 }
 
 func runLuks1Test(t *testing.T, cryptsetupArgs ...string) {
 	t.Parallel()
 
 	password := "foobar"
-	disk, err := prepareLuks1Disk(t, password, cryptsetupArgs...)
-	require.NoError(t, err)
+	disk := prepareLuks1Disk(t, password, cryptsetupArgs...)
 	defer disk.Close()
 	defer os.Remove(disk.Name())
 
@@ -67,8 +66,7 @@ func TestLuks1UnlockMultipleKeySlots(t *testing.T) {
 	t.Parallel()
 
 	password := "barfoo"
-	disk, err := prepareLuks1Disk(t, password)
-	require.NoError(t, err)
+	disk := prepareLuks1Disk(t, password)
 	defer disk.Close()
 	defer os.Remove(disk.Name())
 
@@ -191,8 +189,7 @@ func TestReadLuksMetaInitialized(t *testing.T) {
 	t.Parallel()
 
 	password := "barfoo"
-	disk, err := prepareLuks1Disk(t, password)
-	require.NoError(t, err)
+	disk := prepareLuks1Disk(t, password)
 	defer disk.Close()
 	defer os.Remove(disk.Name())
 
