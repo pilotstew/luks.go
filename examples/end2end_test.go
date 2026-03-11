@@ -169,9 +169,15 @@ func runLuksTest(t *testing.T, name string, testPersistentFlags bool, formatArgs
 }
 
 func TestLUKS1(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("devmapper requires root privileges")
+	}
 	runLuksTest(t, "luks1", false, "--type", "luks1", "--iter-time", "5") // lower the unlock time to make tests faster
 }
 
 func TestLUKS2(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("devmapper requires root privileges")
+	}
 	runLuksTest(t, "luks2", true, "--type", "luks2", "--iter-time", "5")
 }
