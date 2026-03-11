@@ -258,15 +258,10 @@ func (d *deviceV2) UnsealVolume(keyslotIdx int, passphrase []byte) (*Volume, err
 	}
 	clearSlice(generatedDigest)
 
-	if len(digest.Segments) != 1 {
-		return nil, fmt.Errorf("LUKS partition expects exactly 1 storage segment, got %+v", len(digest.Segments))
-	}
-	seg, err := digest.Segments[0].Int64()
+	storageSegment, err := d.findCryptSegment(digest)
 	if err != nil {
 		return nil, err
 	}
-
-	storageSegment := d.meta.Segments[int(seg)]
 	offset, err := storageSegment.Offset.Int64()
 	if err != nil {
 		return nil, err
@@ -448,4 +443,24 @@ func (d *deviceV2) findDigestForKeyslot(keyslotIdx int) *digest {
 		}
 	}
 	return nil
+}
+
+// findCryptSegment returns the first segment of type "crypt" referenced by the
+// given digest. This handles the multi-segment case (e.g. integrity layouts)
+// where a digest may cover both a "crypt" and a "linear" segment.
+func (d *deviceV2) findCryptSegment(dig *digest) (*segment, error) {
+	for _, segNum := range dig.Segments {
+		segID, err := segNum.Int64()
+		if err != nil {
+			continue
+		}
+		seg, ok := d.meta.Segments[int(segID)]
+		if !ok {
+			continue
+		}
+		if seg.Type == "crypt" {
+			return &seg, nil
+		}
+	}
+	return nil, fmt.Errorf("no crypt segment found in digest (segments: %v)", dig.Segments)
 }
