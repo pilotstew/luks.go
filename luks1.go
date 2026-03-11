@@ -78,7 +78,7 @@ func (d *deviceV1) Path() string {
 }
 
 func (d *deviceV1) Slots() []int {
-	slots := make([]int, 0)
+	var slots []int
 
 	for id, ks := range d.hdr.KeySlots {
 		if ks.Active != luksV1SlotEnabled {

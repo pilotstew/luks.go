@@ -85,7 +85,7 @@ func initV2Device(path string, hdrF, dataF *os.File) (*deviceV2, error) {
 
 	h.Write(data)
 
-	checksum := h.Sum(make([]byte, 0))
+	checksum := h.Sum(nil)
 	expectedChecksum := hdr.Checksum[:h.Size()]
 	if !bytes.Equal(checksum, expectedChecksum) {
 		return nil, fmt.Errorf("invalid header checksum")
