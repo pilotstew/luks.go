@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/cipher"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash"
 	"hash/crc32"
@@ -128,7 +129,7 @@ func (d *deviceV1) UnlockAny(passphrase []byte, dmName string) error {
 		}
 
 		volume, err := d.UnsealVolume(k, passphrase)
-		if err == ErrPassphraseDoesNotMatch {
+		if errors.Is(err, ErrPassphraseDoesNotMatch) {
 			continue
 		} else if err != nil {
 			return err

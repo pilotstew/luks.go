@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash"
 	"os"
@@ -205,7 +206,7 @@ func (d *deviceV2) Unlock(keyslot int, passphrase []byte, dmName string) error {
 func (d *deviceV2) UnlockAny(passphrase []byte, dmName string) error {
 	for _, s := range d.Slots() {
 		volume, err := d.UnsealVolume(s, passphrase)
-		if err == ErrPassphraseDoesNotMatch {
+		if errors.Is(err, ErrPassphraseDoesNotMatch) {
 			continue
 		} else if err != nil {
 			return err
