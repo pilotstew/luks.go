@@ -3,7 +3,6 @@ package luks
 import (
 	"bytes"
 	"crypto/sha256"
-	"crypto/sha512"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -422,14 +421,9 @@ func deriveLuks2AfKey(kdf kdf, keyslotIdx int, passphrase []byte, keyLength uint
 
 	switch kdf.Type {
 	case "pbkdf2":
-		var h func() hash.Hash
-		switch kdf.Hash {
-		case "sha256":
-			h = sha256.New
-		case "sha512":
-			h = sha512.New
-		default:
-			return nil, fmt.Errorf("unknown keyslotIdx[%v].kdf.hash algorithm: %v", keyslotIdx, kdf.Hash)
+		h, _ := getHashAlgo(kdf.Hash)
+		if h == nil {
+			return nil, fmt.Errorf("unknown keyslot[%v] kdf hash algorithm: %v", keyslotIdx, kdf.Hash)
 		}
 		return pbkdf2.Key(passphrase, salt, int(kdf.Iterations), int(keyLength), h), nil
 	case "argon2i":
