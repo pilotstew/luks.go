@@ -48,7 +48,7 @@ func fileSize(f *os.File) (uint64, error) {
 }
 
 func isPowerOfTwo(x uint) bool {
-	return (x & (x - 1)) == 0
+	return x != 0 && (x&(x-1)) == 0
 }
 
 func roundUp(n int, divider int) int {

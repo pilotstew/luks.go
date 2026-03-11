@@ -10,7 +10,7 @@ import (
 
 func TestIsPowerOf2(t *testing.T) {
 	valid := []uint{1, 2, 4, 1 << 3, 1 << 8, 1 << 24}
-	invalid := []uint{3, 5, 9, 323, 34322, 6521212322}
+	invalid := []uint{0, 3, 5, 9, 323, 34322, 6521212322}
 
 	for _, v := range valid {
 		require.True(t, isPowerOfTwo(v))
