@@ -1,38 +1,131 @@
 # Pure Go library for LUKS volume management
 
-`luks.go` is a pure-Go library that helps to deal with LUKS-encrypted volumes.
+`luks.go` is a pure-Go library for working with LUKS-encrypted volumes.
 
-Currently, this library is focusing on the read-only path i.e. unlocking a partition without doing
-any modifications to LUKS metadata header.
+This library focuses on the read-only (unlocking) path — it reads LUKS metadata and
+recovers volume keys without modifying the LUKS header.
 
-Here is an example that demonstrates the API usage:
+## Installation
+
+```
+go get github.com/anatol/luks.go
+```
+
+Requires Linux (uses device-mapper via `/dev/mapper`).
+
+## Supported features
+
+- LUKS v1 and LUKS v2
+- Detached headers (`OpenWithHeader`)
+- KDFs: `pbkdf2`, `argon2i`, `argon2id`
+- Ciphers: AES, Camellia, Twofish (XTS mode)
+- Hash algorithms: SHA-1/224/256/384/512, SHA-3, RIPEMD-160, BLAKE2b, BLAKE2s, Whirlpool
+- dm-crypt flags: allow-discards, same-cpu-crypt, submit-from-crypt-cpus, no-read-workqueue, no-write-workqueue
+- Token metadata (clevis, systemd-fido2, etc.)
+- LUKS v2 keyslot priorities
+- Multi-segment LUKS2 layouts (e.g. integrity)
+
+## Usage
+
+### Open and unlock
+
 ```go
 dev, err := luks.Open("/dev/sda1")
 if err != nil {
-  // handle error
+    log.Fatal(err)
 }
 defer dev.Close()
 
-// set LUKS flags before unlocking the volume
-if err := dev.FlagsAdd(luks.FlagAllowDiscards); err != nil {
-    log.Print(err)
-}
-
-// UnsealVolume+SetupMapper is equivalent of `cryptsetup open /dev/sda1 volumename`
-volume, err = dev.UnsealVolume(/* slot */ 0, []byte("password"))
-if err == luks.ErrPassphraseDoesNotMatch {
-    log.Printf("The password is incorrect")
+// Unlock a specific slot and create a device mapper entry.
+// Equivalent to: cryptsetup open /dev/sda1 volumename
+if err := dev.Unlock(0, []byte("password"), "volumename"); err == luks.ErrPassphraseDoesNotMatch {
+    log.Fatal("wrong password")
 } else if err != nil {
-    log.Print(err)
-} else {
-    err := volume.SetupMapper("volumename")
-    // at this point system should have a file `/dev/mapper/volumename`.
+    log.Fatal(err)
+}
+// /dev/mapper/volumename is now available
+
+// Close the mapper when done.
+// Equivalent to: cryptsetup close volumename
+if err := luks.Lock("volumename"); err != nil {
+    log.Fatal(err)
+}
+```
+
+### Try all keyslots
+
+```go
+if err := dev.UnlockAny([]byte("password"), "volumename"); err != nil {
+    log.Fatal(err)
+}
+```
+
+### Detached header
+
+```go
+dev, err := luks.OpenWithHeader("/dev/sda1", "/path/to/header.bin")
+```
+
+### Flags (dm-crypt options)
+
+```go
+// Set flags before unlocking
+dev.FlagsAdd(luks.FlagAllowDiscards)
+dev.FlagsAdd(luks.FlagNoReadWorkqueue, luks.FlagNoWriteWorkqueue)
+
+// Get current flags
+flags := dev.FlagsGet()
+
+// Clear all flags
+dev.FlagsClear()
+```
+
+Available flags:
+- `FlagAllowDiscards` — pass discard/TRIM requests through (SSD-friendly, reduces security)
+- `FlagSameCPUCrypt` — perform encryption on the same CPU as the IO
+- `FlagSubmitFromCryptCPUs` — submit IO from crypto CPUs
+- `FlagNoReadWorkqueue` — bypass read workqueue (Linux 5.9+)
+- `FlagNoWriteWorkqueue` — bypass write workqueue (Linux 5.9+)
+
+### Two-step unlock (advanced)
+
+`UnsealVolume` recovers the key without activating the mapper, allowing inspection or
+custom dm-crypt setup:
+
+```go
+volume, err := dev.UnsealVolume(0, []byte("password"))
+if err == luks.ErrPassphraseDoesNotMatch {
+    log.Fatal("wrong password")
+} else if err != nil {
+    log.Fatal(err)
 }
 
-// equivalent of `cryptsetup close volumename`
-if err := luks.Lock("volumename"); err != nil {
-    log.Print(err)
+// volume contains encryption parameters; activate when ready
+if err := volume.SetupMapper("volumename"); err != nil {
+    log.Fatal(err)
 }
+```
+
+### Token metadata
+
+Tokens are LUKS v2 metadata entries (or luksmeta entries for LUKS v1) that carry
+supplementary information for unlocking tools like clevis or systemd-fido2.
+
+```go
+tokens, err := dev.Tokens()
+for _, t := range tokens {
+    fmt.Printf("token %d: type=%s slots=%v\n", t.ID, t.Type, t.Slots)
+    // t.Payload contains the raw JSON (LUKS v2) or binary (LUKS v1) token data
+}
+```
+
+### Device metadata
+
+```go
+fmt.Println(dev.Version()) // 1 or 2
+fmt.Println(dev.UUID())
+fmt.Println(dev.Slots()) // active keyslot IDs, sorted by priority (LUKS v2)
+fmt.Println(dev.Path())
 ```
 
 ## License
