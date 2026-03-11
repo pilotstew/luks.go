@@ -12,6 +12,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer dev.Close()
+
 	err = dev.Unlock(0, []byte("foobar"), "foo")
 	if err != nil {
 		log.Fatal(err)
