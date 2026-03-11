@@ -93,7 +93,9 @@ func initV2Device(path string, hdrF, dataF *os.File) (*deviceV2, error) {
 
 	var meta metadata
 	jsonData := data[4096:]
-	jsonData = jsonData[:bytes.IndexByte(jsonData, 0)]
+	if end := bytes.IndexByte(jsonData, 0); end >= 0 {
+		jsonData = jsonData[:end]
+	}
 
 	if err := json.Unmarshal(jsonData, &meta); err != nil {
 		return nil, err
