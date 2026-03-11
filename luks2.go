@@ -67,7 +67,7 @@ func initV2Device(path string, hdrF, dataF *os.File) (*deviceV2, error) {
 		return nil, err
 	}
 
-	for i := 0; i < 64; i++ {
+	for i := range 64 {
 		// clear the checksum
 		data[int(unsafe.Offsetof(hdr.Checksum))+i] = 0
 	}
