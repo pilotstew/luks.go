@@ -1,6 +1,9 @@
 package luks
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 type keyslot struct {
 	Type     string       `json:"type"`
@@ -46,6 +49,7 @@ type segment struct {
 	Size       string      `json:"size"` // either 'dynamic' or uint
 	Encryption string      `json:"encryption"`
 	SectorSize uint        `json:"sector_size"`
+	Flags      []string    `json:"flags"`
 }
 
 type digest struct {
@@ -58,11 +62,34 @@ type digest struct {
 	Digest     string        `json:"digest"`
 }
 
+// configRequirements handles the LUKS2 config requirements field, which may be
+// either a JSON array of strings (["opal"]) as per spec, or a JSON object
+// ({"mandatory": ["opal"]}) as emitted by cryptsetup in practice.
+type configRequirements []string
+
+func (r *configRequirements) UnmarshalJSON(data []byte) error {
+	// Try the spec-compliant array form: ["opal", ...]
+	var arr []string
+	if err := json.Unmarshal(data, &arr); err == nil {
+		*r = arr
+		return nil
+	}
+	// Try the cryptsetup object form: {"mandatory": ["opal", ...]}
+	var obj struct {
+		Mandatory []string `json:"mandatory"`
+	}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return fmt.Errorf("config.requirements: cannot parse as array or object: %w", err)
+	}
+	*r = obj.Mandatory
+	return nil
+}
+
 type config struct {
-	JSONSize     json.Number `json:"json_size"`
-	KeyslotsSize json.Number `json:"keyslots_size"`
-	Flags        []string    `json:"flags"`
-	Requirements []string    `json:"requirements"`
+	JSONSize     json.Number        `json:"json_size"`
+	KeyslotsSize json.Number        `json:"keyslots_size"`
+	Flags        []string           `json:"flags"`
+	Requirements configRequirements `json:"requirements"`
 }
 
 type metadata struct {
