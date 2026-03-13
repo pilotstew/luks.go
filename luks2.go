@@ -20,7 +20,7 @@ import (
 )
 
 // LUKS v2 format is specified here
-// https://habd.as/post/external-backup-drive-encryption/assets/luks2_doc_wip.pdf
+// https://gitlab.com/cryptsetup/cryptsetup/-/blob/main/docs/on-disk-format-luks2.pdf
 type headerV2 struct {
 	Magic             [6]byte
 	Version           uint16
