@@ -11,7 +11,9 @@ type keyslot struct {
 	Af       antiForensic `json:"af"`
 	Area     area         `json:"area"`
 	Kdf      kdf          `json:"kdf"`
-	Priority *int         `json:"priority"` // need to distinguish 0 (ignore) from absence of the field (normal priority)
+	// Priority is a pointer to distinguish three states:
+	// nil = normal priority (default), 0 = ignore (skip slot), 1 = normal, 2 = high (prefer)
+	Priority *int `json:"priority"`
 }
 
 type antiForensic struct {
@@ -46,7 +48,7 @@ type segment struct {
 	Type       string      `json:"type"`
 	Offset     json.Number `json:"offset"`
 	IvTweak    json.Number `json:"iv_tweak"`
-	Size       string      `json:"size"` // either 'dynamic' or uint
+	Size       string      `json:"size"` // "dynamic" (fill remaining space) or a decimal byte count
 	Encryption string      `json:"encryption"`
 	SectorSize uint        `json:"sector_size"`
 	Flags      []string    `json:"flags"`

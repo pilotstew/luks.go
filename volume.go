@@ -41,6 +41,7 @@ func (v *Volume) SetupMapper(name string) error {
 		kernelFlags = append(kernelFlags, flag)
 	}
 
+	// dm-crypt requires both size and offset to be aligned to the sector size
 	if v.StorageSize%v.StorageSectorSize != 0 {
 		return fmt.Errorf("storage size must be multiple of sector size")
 	}
@@ -60,7 +61,9 @@ func (v *Volume) SetupMapper(name string) error {
 		SectorSize:    v.StorageSectorSize,
 	}
 
-	uuid := fmt.Sprintf("CRYPT-%v-%v-%v", v.LuksType, strings.ReplaceAll(v.UUID, "-", ""), name) // See dm_prepare_uuid()
+	// Build a UUID in the format expected by cryptsetup's dm_prepare_uuid():
+	// "CRYPT-<type>-<uuid_no_dashes>-<dm_name>"
+	uuid := fmt.Sprintf("CRYPT-%v-%v-%v", v.LuksType, strings.ReplaceAll(v.UUID, "-", ""), name)
 
 	return devmapper.CreateAndLoad(name, uuid, 0, table)
 }

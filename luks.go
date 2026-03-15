@@ -71,7 +71,9 @@ type Token struct {
 // openFromFiles detects the LUKS version from hdrF, verifies the magic bytes,
 // and dispatches to the appropriate init function.
 func openFromFiles(devicePath string, hdrF, dataF *os.File) (Device, error) {
-	// LUKS magic and version are stored in the first 8 bytes of the LUKS header
+	// LUKS magic and version occupy the first 8 bytes of the header:
+	// bytes 0-5: magic "LUKS\xba\xbe" (standard LUKS signature)
+	// bytes 6-7: version number in big-endian
 	header := make([]byte, 8)
 	if _, err := hdrF.ReadAt(header, 0); err != nil {
 		return nil, err
@@ -79,7 +81,7 @@ func openFromFiles(devicePath string, hdrF, dataF *os.File) (Device, error) {
 	if !bytes.Equal(header[0:6], []byte("LUKS\xba\xbe")) {
 		return nil, fmt.Errorf("invalid LUKS header")
 	}
-	version := int(header[6])<<8 + int(header[7])
+	version := int(header[6])<<8 + int(header[7]) // big-endian uint16
 	switch version {
 	case 1:
 		return initV1Device(devicePath, hdrF, dataF)

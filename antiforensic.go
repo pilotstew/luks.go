@@ -7,13 +7,15 @@ import (
 	"hash"
 )
 
+// xorSlices computes the element-wise XOR of src1 and src2 into dest.
+// All three slices must be the same length.
 func xorSlices(src1, src2 []byte, dest []byte) {
-	// src1, src2, dest are all the same size
 	for i := range dest {
 		dest[i] = src1[i] ^ src2[i]
 	}
 }
 
+// hashBuffer hashes src with a 4-byte big-endian IV prefix and appends the digest to result.
 func hashBuffer(src []byte, h hash.Hash, iv int, result []byte) []byte {
 	ivSlice := make([]byte, 4)
 	binary.BigEndian.PutUint32(ivSlice, uint32(iv))
@@ -24,8 +26,10 @@ func hashBuffer(src []byte, h hash.Hash, iv int, result []byte) []byte {
 	return h.Sum(result)
 }
 
+// diffuse applies a hash-based diffusion function over src, splitting it into
+// digest-sized chunks, hashing each with a sequential IV, and concatenating the results.
+// This ensures that a change in any byte of src propagates across the output.
 func diffuse(src []byte, h hash.Hash) []byte {
-	// src and dest are of the same size
 	sliceSize := len(src)
 	result := make([]byte, 0, sliceSize)
 	digestSize := h.Size()
@@ -42,6 +46,11 @@ func diffuse(src []byte, h hash.Hash) []byte {
 	return result
 }
 
+// afSplit performs anti-forensic information splitting (AFsplit) as defined in the
+// LUKS specification. It distributes the key data across blockNum stripes so that
+// all stripes are needed to recover the original data. The first blockNum-1 stripes
+// are filled with random data; the final stripe is computed so that the XOR-diffuse
+// chain recovers src.
 func afSplit(src []byte, blockNum int, h hash.Hash) ([]byte, error) {
 	blockSize := len(src)
 	buffer := make([]byte, blockSize)
@@ -70,6 +79,8 @@ func afSplit(src []byte, blockNum int, h hash.Hash) ([]byte, error) {
 	return dest, nil
 }
 
+// afMerge performs the inverse of afSplit: it recovers the original key data from
+// blockNum stripes by iteratively XORing and diffusing each stripe into a running buffer.
 func afMerge(src []byte, blockSize, blockNum int, h hash.Hash) ([]byte, error) {
 	buffer := make([]byte, blockSize)
 

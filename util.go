@@ -28,7 +28,7 @@ const storageSectorSize = 512
 // default number of anti-forensic stripes
 const stripesNum = 4000
 
-// fileSize returns size of the file. This function works both with regular files and block devices
+// fileSize returns size of the file. This function works both with regular files and block devices.
 func fileSize(f *os.File) (uint64, error) {
 	st, err := f.Stat()
 	if err != nil {
@@ -39,6 +39,9 @@ func fileSize(f *os.File) (uint64, error) {
 	if !ok {
 		return 0, fmt.Errorf("unable to get stat for file %s", f.Name())
 	}
+	// For regular files, stat provides the size directly.
+	// For block devices, we must use the BLKGETSIZE64 ioctl instead,
+	// because stat reports size 0 for device nodes.
 	if sys.Mode&syscall.S_IFBLK == 0 {
 		return uint64(sys.Size), nil
 	}
@@ -114,6 +117,7 @@ func getHashAlgo(name string) (func() hash.Hash, int) {
 	}
 }
 
+// getCipher returns a cipher.Block constructor for the given cipher name.
 func getCipher(name string) (func(key []byte) (cipher.Block, error), error) {
 	switch name {
 	case "aes":

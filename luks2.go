@@ -56,7 +56,9 @@ func initV2Device(path string, hdrF, dataF *os.File) (*deviceV2, error) {
 		return nil, err
 	}
 
-	hdrSize := hdr.HeaderSize // size of header + JSON metadata
+	// HeaderSize covers the binary header plus the JSON metadata area.
+	// Per the LUKS2 spec it must be a power of two between 16 KiB and 4 MiB.
+	hdrSize := hdr.HeaderSize
 	if !isPowerOfTwo(uint(hdrSize)) || hdrSize < 16384 || hdrSize > 4194304 {
 		return nil, fmt.Errorf("invalid size of LUKS header: %v", hdrSize)
 	}
@@ -67,12 +69,12 @@ func initV2Device(path string, hdrF, dataF *os.File) (*deviceV2, error) {
 		return nil, err
 	}
 
+	// To verify header integrity, zero out the checksum field in the data copy
+	// and compute a fresh checksum over the entire header area.
 	for i := range 64 {
-		// clear the checksum
 		data[int(unsafe.Offsetof(hdr.Checksum))+i] = 0
 	}
 
-	// calculate the checksum of the whole header
 	var h hash.Hash
 	algo := fixedArrayToString(hdr.ChecksumAlgorithm[:])
 	switch algo {
@@ -90,6 +92,7 @@ func initV2Device(path string, hdrF, dataF *os.File) (*deviceV2, error) {
 		return nil, fmt.Errorf("invalid header checksum")
 	}
 
+	// The JSON metadata area starts at offset 4096 (after the 4 KiB binary header)
 	var meta metadata
 	jsonData := data[4096:]
 	if end := bytes.IndexByte(jsonData, 0); end >= 0 {
@@ -110,6 +113,7 @@ func initV2Device(path string, hdrF, dataF *os.File) (*deviceV2, error) {
 	}, nil
 }
 
+// Close implements Device.Close for LUKS v2 devices.
 func (d *deviceV2) Close() error {
 	err := d.hdrF.Close()
 	if d.dataF != d.hdrF {
@@ -120,10 +124,14 @@ func (d *deviceV2) Close() error {
 	return err
 }
 
+// Path implements Device.Path for LUKS v2 devices.
 func (d *deviceV2) Path() string {
 	return d.path
 }
 
+// Slots implements Device.Slots for LUKS v2 devices.
+// Returns keyslot indices sorted by priority: high (2) first, then normal (1 or nil).
+// Slots with priority 0 (ignore) are excluded.
 func (d *deviceV2) Slots() []int {
 	var normPrio, highPrio []int
 	for i, k := range d.meta.Keyslots {
@@ -132,11 +140,13 @@ func (d *deviceV2) Slots() []int {
 		} else if k.Priority == nil || *k.Priority == 1 {
 			normPrio = append(normPrio, i)
 		}
+		// priority 0 means "ignore": slot is skipped
 	}
-	// first we append high priority slots, then normal priority
 	return append(highPrio, normPrio...)
 }
 
+// Tokens implements Device.Tokens for LUKS v2 devices.
+// Parses token entries from the JSON metadata, extracting type and associated keyslot IDs.
 func (d *deviceV2) Tokens() ([]Token, error) {
 	var tokens []Token
 
@@ -173,27 +183,33 @@ func (d *deviceV2) Tokens() ([]Token, error) {
 	return tokens, nil
 }
 
+// UUID implements Device.UUID for LUKS v2 devices.
 func (d *deviceV2) UUID() string {
 	return fixedArrayToString(d.hdr.UUID[:])
 }
 
+// FlagsGet implements Device.FlagsGet for LUKS v2 devices.
 func (d *deviceV2) FlagsGet() []string {
 	return d.flags
 }
 
+// FlagsAdd implements Device.FlagsAdd for LUKS v2 devices.
 func (d *deviceV2) FlagsAdd(flags ...string) error {
 	d.flags = append(d.flags, flags...)
 	return nil
 }
 
+// FlagsClear implements Device.FlagsClear for LUKS v2 devices.
 func (d *deviceV2) FlagsClear() {
 	d.flags = nil
 }
 
+// Version implements Device.Version for LUKS v2 devices.
 func (d *deviceV2) Version() int {
 	return 2
 }
 
+// Unlock implements Device.Unlock for LUKS v2 devices.
 func (d *deviceV2) Unlock(keyslot int, passphrase []byte, dmName string) error {
 	volume, err := d.UnsealVolume(keyslot, passphrase)
 	if err != nil {
@@ -204,6 +220,7 @@ func (d *deviceV2) Unlock(keyslot int, passphrase []byte, dmName string) error {
 	return volume.SetupMapper(dmName)
 }
 
+// UnlockAny implements Device.UnlockAny for LUKS v2 devices.
 func (d *deviceV2) UnlockAny(passphrase []byte, dmName string) error {
 	for _, s := range d.Slots() {
 		volume, err := d.UnsealVolume(s, passphrase)
@@ -218,6 +235,10 @@ func (d *deviceV2) UnlockAny(passphrase []byte, dmName string) error {
 	return ErrPassphraseDoesNotMatch
 }
 
+// UnsealVolume implements Device.UnsealVolume for LUKS v2 devices.
+// It derives the anti-forensic key using the keyslot's KDF (PBKDF2 or Argon2),
+// decrypts the keyslot area, recovers the volume key, and verifies it against
+// the digest entry associated with this keyslot.
 func (d *deviceV2) UnsealVolume(keyslotIdx int, passphrase []byte) (*Volume, error) {
 	keyslots := d.meta.Keyslots
 
@@ -267,6 +288,8 @@ func (d *deviceV2) UnsealVolume(keyslotIdx int, passphrase []byte) (*Volume, err
 		return nil, err
 	}
 
+	// The segment size is a string: either "dynamic" (fill remaining device space)
+	// or a decimal byte count. This follows the LUKS2 on-disk JSON format.
 	var storageSize uint64
 	if storageSegment.Size == "dynamic" {
 		storageSize, err = fileSize(d.dataF)
@@ -366,12 +389,14 @@ func (d *deviceV2) decryptLuks2VolumeKey(keyslotIdx int, keyslot keyslot, afKey 
 		return nil, err
 	}
 
+	// XTS decryption operates sector-by-sector, using the sector index as the tweak
 	for i := 0; i < int(keyslotSize/storageSectorSize); i++ {
 		block := keyData[i*storageSectorSize : (i+1)*storageSectorSize]
 		ciph.Decrypt(block, block, uint64(i))
 	}
 
-	// anti-forensic merge
+	// Recover the volume key from the anti-forensic split format.
+	// LUKS requires exactly 4000 stripes per the specification.
 	af := keyslot.Af
 	if af.Stripes != stripesNum {
 		return nil, fmt.Errorf("LUKS currently supports only AF with 4000 stripes")
@@ -430,6 +455,7 @@ func deriveLuks2AfKey(kdf kdf, keyslotIdx int, passphrase []byte, keyLength uint
 	}
 }
 
+// findDigestForKeyslot searches the metadata digests for one that references the given keyslot.
 func (d *deviceV2) findDigestForKeyslot(keyslotIdx int) *digest {
 	for _, dig := range d.meta.Digests {
 		for _, k := range dig.Keyslots {

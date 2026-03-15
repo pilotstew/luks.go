@@ -40,6 +40,8 @@ type keySlot struct {
 	Stripes           uint32
 }
 
+// luksV1SlotEnabled is the magic value in the keySlot.Active field that marks
+// a LUKS v1 keyslot as active/enabled.
 const luksV1SlotEnabled = 0xAC71F3
 
 type deviceV1 struct {
@@ -63,6 +65,7 @@ func initV1Device(path string, hdrF, dataF *os.File) (*deviceV1, error) {
 	return &deviceV1{path: path, hdrF: hdrF, dataF: dataF, hdr: &hdr}, nil
 }
 
+// Close implements Device.Close for LUKS v1 devices.
 func (d *deviceV1) Close() error {
 	err := d.hdrF.Close()
 	if d.dataF != d.hdrF {
@@ -73,10 +76,13 @@ func (d *deviceV1) Close() error {
 	return err
 }
 
+// Path implements Device.Path for LUKS v1 devices.
 func (d *deviceV1) Path() string {
 	return d.path
 }
 
+// Slots implements Device.Slots for LUKS v1 devices.
+// Returns indices of keyslots that have the Active field set to luksV1SlotEnabled.
 func (d *deviceV1) Slots() []int {
 	var slots []int
 
@@ -91,27 +97,33 @@ func (d *deviceV1) Slots() []int {
 	return slots
 }
 
+// UUID implements Device.UUID for LUKS v1 devices.
 func (d *deviceV1) UUID() string {
 	return fixedArrayToString(d.hdr.UUID[:])
 }
 
+// FlagsGet implements Device.FlagsGet for LUKS v1 devices.
 func (d *deviceV1) FlagsGet() []string {
 	return d.flags
 }
 
+// FlagsAdd implements Device.FlagsAdd for LUKS v1 devices.
 func (d *deviceV1) FlagsAdd(flags ...string) error {
 	d.flags = append(d.flags, flags...)
 	return nil
 }
 
+// FlagsClear implements Device.FlagsClear for LUKS v1 devices.
 func (d *deviceV1) FlagsClear() {
 	d.flags = nil
 }
 
+// Version implements Device.Version for LUKS v1 devices.
 func (d *deviceV1) Version() int {
 	return 1
 }
 
+// Unlock implements Device.Unlock for LUKS v1 devices.
 func (d *deviceV1) Unlock(keyslot int, passphrase []byte, dmName string) error {
 	volume, err := d.UnsealVolume(keyslot, passphrase)
 	if err != nil {
@@ -122,6 +134,7 @@ func (d *deviceV1) Unlock(keyslot int, passphrase []byte, dmName string) error {
 	return volume.SetupMapper(dmName)
 }
 
+// UnlockAny implements Device.UnlockAny for LUKS v1 devices.
 func (d *deviceV1) UnlockAny(passphrase []byte, dmName string) error {
 	for k, s := range d.hdr.KeySlots {
 		if s.Active != luksV1SlotEnabled {
@@ -140,6 +153,10 @@ func (d *deviceV1) UnlockAny(passphrase []byte, dmName string) error {
 	return ErrPassphraseDoesNotMatch
 }
 
+// UnsealVolume implements Device.UnsealVolume for LUKS v1 devices.
+// It derives the anti-forensic key from the passphrase using PBKDF2, decrypts the
+// keyslot area, recovers the volume key via anti-forensic merge, and verifies
+// the result against the master key digest stored in the header.
 func (d *deviceV1) UnsealVolume(keyslotIdx int, passphrase []byte) (*Volume, error) {
 	keyslots := d.hdr.KeySlots
 	if keyslotIdx < 0 || keyslotIdx >= len(keyslots) {
@@ -161,7 +178,8 @@ func (d *deviceV1) UnsealVolume(keyslotIdx int, passphrase []byte) (*Volume, err
 		return nil, err
 	}
 
-	// verify with digest
+	// Verify the recovered key by re-deriving the master key digest with PBKDF2
+	// and comparing the first 20 bytes (SHA-1 digest size) against the stored digest.
 	generatedDigest := pbkdf2.Key(finalKey, d.hdr.MkDigestSalt[:], int(d.hdr.MkDigestIter), int(d.hdr.KeyBytes), h)
 	defer clearSlice(generatedDigest)
 	if !bytes.Equal(generatedDigest[:20], d.hdr.MkDigest[:]) {
@@ -215,12 +233,14 @@ func (d *deviceV1) decryptLuks1VolumeKey(keyslotIdx int, slot keySlot, afKey []b
 		return nil, err
 	}
 
+	// XTS decryption operates sector-by-sector, using the sector index as the tweak
 	for i := 0; i < int(keyslotSize/storageSectorSize); i++ {
 		block := keyData[i*storageSectorSize : (i+1)*storageSectorSize]
 		ciph.Decrypt(block, block, uint64(i))
 	}
 
-	// anti-forensic merge
+	// Recover the volume key from the anti-forensic split format.
+	// LUKS requires exactly 4000 stripes per the specification.
 	if slot.Stripes != stripesNum {
 		return nil, fmt.Errorf("LUKS currently supports only AF with 4000 stripes")
 	}
@@ -265,12 +285,16 @@ type luksMetaHeader struct {
 	Slots   [8]luksMetaSlot
 }
 
-// readLuksMeta read non-standard metadata information for LUKS v1
-// It follows implementation defined at https://github.com/latchset/luksmeta
+// Tokens implements Device.Tokens for LUKS v1 devices.
+// It reads non-standard luksmeta metadata as defined at https://github.com/latchset/luksmeta.
+// luksmeta stores token data in the gap between the end of the keyslot material and
+// the start of the encrypted payload.
 func (d *deviceV1) Tokens() ([]Token, error) {
 	var hdr luksMetaHeader
 	data := make([]byte, unsafe.Sizeof(hdr))
 
+	// Find the end of all keyslot material regions to locate the luksmeta header.
+	// The luksmeta header sits right after the last keyslot, aligned to 4096 bytes.
 	var holeOffset int
 	length := int(d.hdr.KeyBytes * stripesNum)
 	for _, s := range d.hdr.KeySlots {
@@ -293,6 +317,9 @@ func (d *deviceV1) Tokens() ([]Token, error) {
 		return tokens, nil
 	}
 
+	// Validate the header CRC32 using the Castagnoli polynomial (CRC-32C),
+	// which is the variant used by the luksmeta format. The CRC field itself
+	// is zeroed before computing the checksum.
 	crcFieldOffset := unsafe.Offsetof(hdr.Crc32)
 	clearSlice(data[crcFieldOffset : crcFieldOffset+4])
 	hdrChecksum := crc32.New(crc32.MakeTable(crc32.Castagnoli))

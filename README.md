@@ -128,6 +128,29 @@ fmt.Println(dev.Slots()) // active keyslot IDs, sorted by priority (LUKS v2)
 fmt.Println(dev.Path())
 ```
 
+## How it works
+
+The unlock process follows these steps for both LUKS v1 and v2:
+
+1. **Open** — read and validate the binary header (magic bytes, version, checksum).
+   For LUKS v2, the JSON metadata area is also parsed.
+2. **Key derivation** — derive an intermediate key from the passphrase using the
+   keyslot's KDF (PBKDF2 for v1; PBKDF2, Argon2i, or Argon2id for v2).
+3. **Keyslot decryption** — decrypt the keyslot area sector-by-sector using
+   XTS-mode encryption with the derived key.
+4. **Anti-forensic merge** — recover the volume master key from 4000 stripes
+   using the AFsplit/AFmerge algorithm (hash-based diffusion + XOR chain).
+5. **Digest verification** — re-derive a digest from the recovered key and compare
+   it against the stored digest to confirm the passphrase is correct.
+6. **Device mapper setup** — pass the recovered key and encryption parameters to
+   the Linux device mapper (dm-crypt) to create the decrypted block device.
+
+## References
+
+- [LUKS v1 on-disk format (PDF)](https://gitlab.com/cryptsetup/cryptsetup/-/wikis/LUKS-standard/on-disk-format.pdf)
+- [LUKS v2 on-disk format (PDF)](https://gitlab.com/cryptsetup/cryptsetup/-/blob/main/docs/on-disk-format-luks2.pdf)
+- [luksmeta (LUKS v1 token metadata)](https://github.com/latchset/luksmeta)
+
 ## License
 
 See [LICENSE](LICENSE).
